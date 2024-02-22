@@ -1,23 +1,12 @@
 import json
 from d64 import DiskImage
 import glob
-from disk_image_handling.c64_disk_image_processing_utils import create_title_path
+from disk_image_handling.c64_disk_image_processing_utils import *
 import os
 from tqdm import tqdm
 from zipfile import ZipFile, BadZipfile
-
-
-class TextWrapper:
-    @staticmethod
-    def screencode_wrap(text: str, line_length: int):
-        wrapped_text = ''
-        text_length = len(text)
-        for i in range(0, text_length, line_length):
-            if i + line_length < text_length:
-                wrapped_text += f'{text[i:i + line_length]}\n'
-            else:
-                wrapped_text += f'{text[i:i + line_length]}'
-        return wrapped_text
+import textwrap
+import numpy as np
 
 
 class Corpus:
@@ -68,21 +57,48 @@ class Corpus:
 
 
 class DiskmagC64:
-    def __init__(self, diskmag_path):
+    def __init__(self, diskmag_path: str, char_threshold: float, line_length: int):
         self.image = DiskImage(diskmag_path)
         self.path = diskmag_path
+        self.char_threshold = char_threshold
+        self.line_length = line_length
         self.filename = os.path.basename(diskmag_path)
         self.diskmag = os.path.basename(os.path.dirname(os.path.dirname(diskmag_path)))
         self.issue = os.path.split(os.path.dirname(diskmag_path))[-1]
 
     def show_directory(self):
         with self.image as disk_image:
-            return list(disk_image.directory())[1:-1]
+            #directory = [program.name.decode('petscii_c64en_lc') for program in disk_image.glob(b'*')]
+            directory = list(disk_image.directory())[1:-1]
+            #directory = [elem.decode('petscii_c64en_lc', errors='replace') for elem in directory]
+            return '\n'.join(directory)
 
     def convert_to_text(self):
         with self.image as disk_image:
             for program_file in disk_image.glob(b'*'):
                 program = ProgramFileC64(disk_image.path(program_file.name))
+                content = program.content
+                print (decode_text(binary_text=content, threshold=0.5))
+
+    def convert_to_txt(self):
+        with open(f'{os.path.dirname(self.path)}/{self.filename}.txt', 'w', encoding='utf-8') as txt_file:
+            with self.image as disk_image:
+                directory = list(disk_image.directory())[1:-1]
+                txt_file.write('\t\tVerzeichnis:\n\n')
+                txt_file.write('\n'.join(directory))
+                txt_file.write('\n\n\t\tInhalte:\n')
+                dir = disk_image.directory()
+                for filename, program_file in zip(directory, disk_image.glob(b'*')):
+                    program = ProgramFileC64(disk_image.path(program_file.name))
+                    content = program.content
+                    text = decode_text(binary_text=content, threshold=self.char_threshold)
+                    wrapper = textwrap.TextWrapper(width=self.line_length)
+                    text = wrapper.fill(text)
+                    txt_file.write(f'\n\t{program_file.name.decode("petscii_c64en_lc", errors="replace")}\n')
+                    if 'DEL' in filename:
+                        txt_file.write(f'\nDeleted file\n')
+                    else:
+                        txt_file.write(f'\n{text}\n')
 
     def save_metadata(self):
         file_name = '../raw_code/metadata.json'

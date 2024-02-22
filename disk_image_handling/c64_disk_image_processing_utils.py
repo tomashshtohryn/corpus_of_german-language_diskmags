@@ -5,26 +5,48 @@ import os
 import re
 from scipy.stats import entropy
 import numpy as np
+import textwrap
 
 
-def decode_text(binary_text: bytes, threshold: float) -> Tuple[str, str]:
+# def wrap_text(text: str, line_length: int):
+#     wrapped_text = ''
+#     text_length = len(text)
+#     for i in range(0, text_length, line_length):
+#         if i + line_length < text_length:
+#             wrapped_text += f'{text[i:i + line_length]}\n'
+#         else:
+#             wrapped_text += f'{text[i:i + line_length]}'
+#     return wrapped_text
+
+# def wrap_text(text: str, line_length: int):
+#     return '\n'.join(text[i:i+40] for i in range(0, len(text), 40))
+def ischar(c):
+    if 65 <= c <= 90: return True
+    if 97 <= c <= 122: return True
+    if 193 <= c <= 218: return True
+    return False
+
+def decode_text(binary_text: bytes, threshold: float) -> str:
     if not isinstance(binary_text, bytes):
         raise TypeError('Input must be a bytes object')
     if check_entropy(binary_text) > 7:
-        return 'Compressed file', 'Unknown encoding'
+        return f'Komprimierte Datei'
+    chars = np.array([ischar(x) for x in binary_text]).astype(int).mean()
+    if chars < threshold:
+        return 'Datei mit Code'
     encoding_mapping = {0: 'ascii', 1: 'petscii_c64en_lc', 2: 'screencode_c64_lc'}
     texts = []
     sum_chars = []
     for encoding in encoding_mapping.values():
-        decoded = binary_text.decode(encoding=encoding, errors='replace')
+        decoded = binary_text.replace(b'\n\r', b'\r').replace(b'\n', b'\n').replace(b'\r', b'\r')
+        decoded = decoded.decode(encoding=encoding, errors='ignore')
+        if decoded.startswith('@'): decoded = decoded[1:]
         texts.append(decoded)
         chars = [character for character in decoded if character.isalpha()]
         sum_chars.append(len(chars) / len(decoded))
     best_encoding = np.argmax(np.array(sum_chars))
-    if max(sum_chars) < threshold:
-        return 'Code', encoding_mapping[best_encoding]
-    else:
-        return texts[best_encoding], encoding_mapping[best_encoding]
+    return texts[best_encoding]
+    # return texts[best_encoding] #, encoding_mapping[best_encoding]
 
 
 def check_entropy(binary_text: bytes) -> int:
